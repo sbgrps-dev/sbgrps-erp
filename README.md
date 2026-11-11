@@ -26,6 +26,7 @@ Billing + statutory doc generation are later phases.
 ### Stocks module (phase 1)
 - [PRD](docs/stocks/PRD-STOCKS.md)
 - [UML](docs/stocks/UML-STOCKS.md)
+- [Tech spec](docs/stocks/TECH-SPEC-STOCKS.md) — DB, API, Excel engine, slices S1–S3
 
 ### MS PFTR attendance (phase 2)
 - [Attendance engine](docs/MSPFTR-ATTENDANCE-ENGINE.md)
@@ -38,3 +39,35 @@ Billing + statutory doc generation are later phases.
 - **DB:** PostgreSQL 16
 - **Excel:** openpyxl (template-fill, preserves formatting)
 - **Hosting:** Docker Compose on Coolify (dev on OptiPlex 3050 Arch); prod on SB Group's server later
+
+## Code
+
+```
+apps/api   FastAPI service (uv)        apps/web   Next.js app (pnpm)
+infra/     docker-compose.yml          .github/   CI
+```
+
+### Run with Docker
+
+```bash
+cp .env.example .env          # set POSTGRES_PASSWORD and API_TOKEN
+docker compose -f infra/docker-compose.yml --env-file .env up --build -d
+docker compose -f infra/docker-compose.yml exec api python -m app.seed   # sites, vendors, Nov-26 products
+# open http://localhost:3000
+```
+
+### Run for development
+
+```bash
+# API (needs a local Postgres 16)
+cd apps/api && uv sync
+export DATABASE_URL=postgresql+asyncpg://sbgrps:sbgrps@localhost:5432/sbgrps
+uv run alembic upgrade head && uv run python -m app.seed
+uv run uvicorn app.main:app --reload          # http://localhost:8000/docs
+
+# Web
+cd apps/web && pnpm install && pnpm dev        # http://localhost:3000 (proxies /api/v1 to API_URL)
+
+# Tests (API tests need an empty throwaway database)
+cd apps/api && TEST_DATABASE_URL=postgresql+asyncpg://sbgrps:sbgrps@localhost:5432/sbgrps_test uv run pytest
+```
