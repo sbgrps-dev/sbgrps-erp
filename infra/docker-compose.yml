@@ -1,0 +1,52 @@
+# Dev / staging stack. Same file runs on the OptiPlex (Coolify) and later on SB Group's server.
+# Usage: docker compose -f infra/docker-compose.yml --env-file .env up --build
+name: sbgrps-erp
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sbgrps
+      POSTGRES_USER: sbgrps
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sbgrps -d sbgrps"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ../apps/api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://sbgrps:${POSTGRES_PASSWORD}@db:5432/sbgrps
+      API_TOKEN: ${API_TOKEN:?set API_TOKEN in .env}
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    # Not published: only the web container talks to the API. Uncomment for /docs during dev.
+    # ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build: ../apps/web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_URL: http://api:8000
+      API_TOKEN: ${API_TOKEN}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+volumes:
+  pgdata:
